@@ -48,25 +48,28 @@ async def fill_fixtures(item):
     # Add fixtures not specified in function arguments (eg. autouse)
     for fixture_name in item._fixtureinfo.initialnames:
         if fixture_name not in fixture_names:
-            fixture_names.append(fixture_name)
+            fixture_names.insert(0, fixture_name)
 
-    for fixture_name in fixture_names:
-        try:
-            fixture = _get_fixture(item, fixture_name)
-        except Ignore:
-            continue
+    for scope_name in ("session", "package", "module", "class", "function"):
+        for fixture_name in fixture_names:
+            try:
+                fixture = _get_fixture(item, fixture_name)
+            except Ignore:
+                continue
+            if fixture.scope != scope_name:
+                continue
 
-        is_autouse = fixture_name not in function_args(item.function)
+            is_autouse = fixture_name not in function_args(item.function)
 
-        if fixture.scope not in ["function", "module", "session"]:
-            raise Exception(f"{fixture.scope} scope not supported")
+            if fixture.scope not in ["function", "module", "session"]:
+                raise Exception(f"{fixture.scope} scope not supported")
 
-        value, teardowns2 = await fill_fixture_fixtures(
-            item._fixtureinfo, fixture, item
-        )
-        teardowns.extend(teardowns2)
-        if not is_autouse:
-            fixture_values.append(value)
+            value, teardowns2 = await fill_fixture_fixtures(
+                item._fixtureinfo, fixture, item
+            )
+            teardowns.extend(teardowns2)
+            if not is_autouse:
+                fixture_values.append(value)
 
     # Slight hack to stop the regular fixture logic from running
     item.fixturenames = []
@@ -104,14 +107,14 @@ class CachedFunctionBase(object):
 
 
 class CachedFunction(CachedFunctionBase):
-    async def __call__(self, *args):
+    async def __call__(self, *args, **kwargs):
         async with self.lock:
             if hasattr(self, "value"):
                 return self.value
             if inspect.iscoroutinefunction(self.wrapped_func):
-                self.value = await self.wrapped_func(*args)
+                self.value = await self.wrapped_func(*args, **kwargs)
             else:
-                self.value = self.wrapped_func(*args)
+                self.value = self.wrapped_func(*args, **kwargs)
             return self.value
 
 
@@ -141,8 +144,9 @@ class CachedGen(CachedFunctionBase):
     def completed(self, instance):
         self.instances.remove(instance)
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         self.args = args
+        self.kwargs = kwargs
         instance = GenCounter(self)
         self.instances.add(instance)
         return instance
@@ -153,7 +157,7 @@ class CachedGen(CachedFunctionBase):
         if hasattr(self, "value"):
             return self.value
         else:
-            gen = self.wrapped_func(*self.args)
+            gen = self.wrapped_func(*self.args, **self.kwargs)
             self.gen = gen
             self.value = gen.__next__()
             return self.value
