@@ -315,10 +315,23 @@ async def _make_regular_fixture(_fixtureinfo, fixture, item):
     )
 
     # Cache the module call
-    if fixture.scope in ["module", "session"]:
+    # if fixture.scope in ["module", "session"]:
+    if fixture.scope in ["session"]:
         if not isinstance(fixture.func, CachedFunction):
             fixture.func = CachedFunction(fixture.func)
         value = await fixture.func(*fixture_values)
+    elif fixture.scope in ["module"]:
+        try:
+            func = item.parent._asyncio_cooperative_cached_functions[fixture]
+        except AttributeError:
+            func = CachedFunction(fixture.func)
+            item.parent._asyncio_cooperative_cached_functions = {fixture: func}
+        except KeyError:
+            func = CachedFunction(fixture.func)
+
+        item.parent._asyncio_cooperative_cached_functions[fixture] = func
+
+        value = await func(*fixture_values)
     elif fixture.scope in ["function"]:
         try:
             func = item._asyncio_cooperative_cached_functions[fixture]
