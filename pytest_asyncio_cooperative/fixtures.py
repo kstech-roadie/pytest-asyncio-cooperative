@@ -189,8 +189,9 @@ class CachedAsyncGen(CachedFunctionBase):
     def completed(self, instance):
         self.instances.remove(instance)
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         self.args = args
+        self.kwargs = kwargs
         instance = AsyncGenCounter(self)
         self.instances.add(instance)
         return instance
@@ -202,7 +203,7 @@ class CachedAsyncGen(CachedFunctionBase):
             if hasattr(self, "value"):
                 return self.value
             else:
-                gen = self.wrapped_func(*self.args)
+                gen = self.wrapped_func(*self.args, **self.kwargs)
                 self.gen = gen
                 self.value = await gen.__anext__()
                 return self.value
@@ -217,13 +218,13 @@ class CachedAsyncGenByArguments(CachedAsyncGen):
         super().__init__(wrapped_func)
         self.callers_by_args = {}
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         if args in self.callers_by_args:
             gen = self.callers_by_args[args]
         else:
             gen = CachedAsyncGen(self.wrapped_func)
             self.callers_by_args[args] = gen
-        return gen(*args)
+        return gen(*args, **kwargs)
 
 
 async def _make_asyncgen_fixture(_fixtureinfo, fixture: FixtureDef, item):
